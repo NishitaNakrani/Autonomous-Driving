@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Human Detection with YOLOv8</title>
+    <style>
+      #resultContainer {
+        display: flex;
+        justify-content: space-around;
+        margin-top: 20px;
+      }
+      #resultContainer img,
+      #resultContainer video {
+        max-width: 45%;
+        height: auto;
+      }
+      .chart-container {
+        width: 90%;
+        margin: auto;
+      }
+      table {
+        width: 90%;
+        margin: auto;
+        border-collapse: collapse;
+        margin-top: 20px;
+      }
+      th,
+      td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: center;
+      }
+      th {
+        background-color: #f2f2f2;
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <h1>Upload an Image or Video</h1>
+    <input type="file" id="fileInput" />
+    <select id="algorithmSelect">
+      <option value="yolov8">YOLOv8</option>
+      <option value="faster_rcnn">Faster R-CNN</option>
+    </select>
+    <button onclick="uploadFile()">Upload</button>
+    <div id="resultContainer">
+      <img
+        id="uploadedImage"
+        src="#"
+        alt="Uploaded Image"
+        style="display: none"
+      />
+      <video id="uploadedVideo" src="#" controls style="display: none"></video>
+      <video id="resultVideo" src="#" controls style="display: none"></video>
+      <img
+        id="resultImage"
+        src="#"
+        alt="Result Image/Video"
+        style="display: none"
+      />
+    </div>
+    <div class="chart-container">
+      <canvas id="combinedChart"></canvas>
+    </div>
+    <pre id="results"></pre>
+
+    <h2>Object Detection Metrics</h2>
+    <table id="metricsTable">
+      <thead>
+        <tr>
+          <th>Metric</th>
+          <th>Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>True Positives (TP)</td>
+          <td id="tpValue">-</td>
+        </tr>
+        <tr>
+          <td>False Positives (FP)</td>
+          <td id="fpValue">-</td>
+        </tr>
+        <tr>
+          <td>False Negatives (FN)</td>
+          <td id="fnValue">-</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <script>
+      function showFilePreview(input, previewElementId) {
+        const file = input.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = function (e) {
+            const previewElement = document.getElementById(previewElementId);
+            previewElement.src = e.target.result;
+            previewElement.style.display = "block";
+          };
+          reader.readAsDataURL(file);
+        }
+      }
+
+      document
+        .getElementById("fileInput")
+        .addEventListener("change", function () {
+          const file = this.files[0];
+          const previewElementId = file.type.includes("image")
+            ? "uploadedImage"
+            : "uploadedVideo";
+          showFilePreview(this, previewElementId);
+        });
+
+      async function uploadFile() {
+        const fileInput = document.getElementById("fileInput");
+        const algorithmSelect = document.getElementById("algorithmSelect");
+        const file = fileInput.files[0];
+        const algorithm = algorithmSelect.value;
+
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("algorithm", algorithm);
+
+        const response = await fetch("/detect", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await response.json();
+        console.log(data);
+        if (data.annotated_image) {
+          const resultImage = document.getElementById("resultImage");
+          resultImage.src = data.annotated_image;
+          resultImage.style.display = "block";
+        } else if (data.annotated_video) {
+          const resultVideo = document.getElementById("resultVideo");
+          resultVideo.src = data.annotated_video;
+          resultVideo.style.display = "block";
+        }
+
+        updateChart(data.precision, data.recall, data.confidence_scores);
+
+        // Update metrics table
+        document.getElementById("tpValue").textContent = data.true_positive;
+        document.getElementById("fpValue").textContent = data.false_positive;
+        document.getElementById("fnValue").textContent = data.false_negative;
+      }
+
+      function updateChart(precision, recall, confidenceScores) {
+        const combinedChartCtx = document
+          .getElementById("combinedChart")
+          .getContext("2d");
+
+        const labels = confidenceScores.map(
+          (_, index) => `Detection ${index + 1}`
+        );
+
+        new Chart(combinedChartCtx, {
+          type: "bar",
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: "Precision",
+                data: new Array(confidenceScores.length).fill(precision),
+                backgroundColor: "rgba(75, 192, 192, 0.2)",
+                borderColor: "rgba(75, 192, 192, 1)",
+                borderWidth: 1,
+              },
+              {
+                label: "Recall",
+                data: new Array(confidenceScores.length).fill(recall),
+                backgroundColor: "rgba(153, 102, 255, 0.2)",
+                borderColor: "rgba(153, 102, 255, 1)",
+                borderWidth: 1,
+              },
+              {
+                label: "Confidence",
+                data: confidenceScores,
+                backgroundColor: "rgba(255, 159, 64, 0.2)",
+                borderColor: "rgba(255, 159, 64, 1)",
+                borderWidth: 1,
+              },
+            ],
+          },
+          options: {
+            scales: {
+              y: {
+                beginAtZero: true,
+              },
+            },
+          },
+        });
+      }
+    </script>
+  </body>
+</html>
